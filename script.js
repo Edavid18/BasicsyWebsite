@@ -39,7 +39,7 @@ const firebaseConfig = {
     ul.innerHTML = "";
     cart.forEach(item => {
       const li = document.createElement("li");
-      li.textContent = `${item.name} - $${item.price}`;
+      li.textContent = `${item.Nombre} - $${item.Precio}`;
       ul.appendChild(li);
     });
   }
@@ -73,8 +73,8 @@ const firebaseConfig = {
       for (const item of items) {
         const ref = db.collection("products").doc(item.productId);
         const snap = await ref.get();
-        const newStock = snap.data().stock - item.quantity;
-        batch.update(ref, { stock: newStock });
+        const newStock = snap.data().Cantidad - item.quantity;
+        batch.update(ref, { Cantidad: newStock });
       }
       await batch.commit();
     }
