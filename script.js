@@ -62,7 +62,8 @@ const firebaseConfig = {
       timestamp: firebase.firestore.FieldValue.serverTimestamp(),
       customerInfo: {
         name: "Test User",
-        phone: "3001234567"
+        phone: "3001234567",
+        direction: "test"
       }
     });
 
@@ -79,7 +80,7 @@ const firebaseConfig = {
     }
 
     const message = `Nueva orden (${method.toUpperCase()}):\nTotal: $${total}\nItems: ${items.map(i => i.productId + ' x' + i.quantity).join(', ')}`;
-    const whatsapp = '573044040766';
+    const whatsapp = '573205792086';
     window.location.href = `https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`;
   }
 
