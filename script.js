@@ -10,27 +10,39 @@ const firebaseConfig = {
 
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
-
   const cart = [];
 
   function loadProducts() {
     db.collection("products").get().then(snapshot => {
       const container = document.getElementById("products");
+      container.innerHTML = "";
       snapshot.forEach(doc => {
         const data = doc.data();
         const div = document.createElement("div");
         div.className = "product";
-        div.innerHTML = `<strong>${data.Nombre} (${data.Color})</strong><br>
-                         Precio: $${data.Precio}<br>
-                         Cantidad: ${data.Cantidad}<br>
-                         <button onclick="addToCart('${doc.id}', '${data.Nombre}', ${data.Precio})">Add to Cart</button>`;
+
+        const colorOptions = data.Color.map(color => `<option value="${color}">${color}</option>`).join('');
+
+        div.innerHTML = `
+          <strong>${data.Nombre}</strong><br>
+          Precio: $${data.Precio}<br>
+          Cantidad: ${data.Cantidad}<br>
+          Color:
+          <select id="color-${doc.id}">
+            ${colorOptions}
+          </select><br>
+          <button onclick="addToCart('${doc.id}', '${data.Nombre}', ${data.Precio})">Add to Cart</button>
+        `;
+
         container.appendChild(div);
       });
     });
   }
 
   function addToCart(id, name, price) {
-    cart.push({ id, name, price });
+    const colorSelect = document.getElementById(`color-${id}`);
+    const selectedColor = colorSelect.value;
+    cart.push({ id, name, price, color: selectedColor });
     renderCart();
   }
 
@@ -39,49 +51,72 @@ const firebaseConfig = {
     ul.innerHTML = "";
     cart.forEach(item => {
       const li = document.createElement("li");
-      li.textContent = `${item.Nombre} - $${item.Precio}`;
+      li.textContent = `${item.name} - $${item.price} - Color: ${item.color}`;
       ul.appendChild(li);
     });
   }
 
-  async function checkout(method) {
-    if (cart.length === 0) return alert("Cart is empty");
-    const grouped = {};
-    cart.forEach(item => {
-      grouped[item.id] = grouped[item.id] ? grouped[item.id] + 1 : 1;
-    });
+async function checkout(method) {
+if (cart.length === 0) return alert("Cart is empty");
 
-    const items = Object.keys(grouped).map(id => ({ productId: id, quantity: grouped[id] }));
-    const total = cart.reduce((sum, item) => sum + item.price, 0);
+const total = cart.reduce((sum, item) => sum + item.price, 0);
 
-    const orderRef = await db.collection("orders").add({
-      items,
-      total,
-      method,
-      confirmed: method === 'cash',
-      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-      customerInfo: {
-        name: "Test User",
-        phone: "3001234567",
-        direction: "test"
-      }
-    });
+const items = cart.map(item => ({
+  productId: item.id,
+  name: item.name,
+  quantity: 1,
+  color: item.color
+}));
 
-    if (method === 'cash') {
-      // decrease stock now
-      const batch = db.batch();
-      for (const item of items) {
-        const ref = db.collection("products").doc(item.productId);
-        const snap = await ref.get();
-        const newStock = snap.data().Cantidad - item.quantity;
-        batch.update(ref, { Cantidad: newStock });
-      }
-      await batch.commit();
+try {
+  const orderRef = await db.collection("orders").add({
+    items,
+    total,
+    method,
+    confirmed: method === 'cash',
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    customerInfo: {
+      name: "Test User",
+      phone: "3001234567",
+      direction: "test"
     }
+  });
 
-    const message = `Nueva orden (${method.toUpperCase()}):\nTotal: $${total}\nItems: ${items.map(i => i.productId + ' x' + i.quantity).join(', ')}`;
-    const whatsapp = '573205792086';
-    window.location.href = `https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`;
+  console.log("Order placed:", orderRef.id);
+
+  if (method === 'cash') {
+    const batch = db.batch();
+    for (const item of items) {
+      const ref = db.collection("products").doc(item.productId);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        console.error(`Product not found: ${item.productId}`);
+        continue;
+      }
+
+      const data = snap.data();
+      if (typeof data.Cantidad !== 'number') {
+        console.error(`Invalid stock for product: ${item.productId}`);
+        continue;
+      }
+
+      const newStock = data.Cantidad - item.quantity;
+      batch.update(ref, { Cantidad: newStock });
+    }
+    await batch.commit();
+    console.log("Stock updated.");
   }
+
+  const message = `Nueva orden (${method.toUpperCase()}):\nTotal: $${total}\n` +
+    items.map(i => `${i.name} - Color: ${i.color} x${i.quantity}`).join('\n');
+
+  const whatsapp = '573205792086';
+  window.location.href = `https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`;
+
+} catch (error) {
+  console.error("Error during checkout:", error);
+  alert("Error al procesar la orden. Revisa la consola.");
+}
+}
 
   loadProducts();
