@@ -20,9 +20,9 @@ const firebaseConfig = {
         const data = doc.data();
         const div = document.createElement("div");
         div.className = "product";
-        div.innerHTML = `<strong>${data.name} (${data.size})</strong><br>
-                         Price: $${data.price}<br>
-                         Stock: ${data.stock}<br>
+        div.innerHTML = `<strong>${data.Nombre} (${data.Color})</strong><br>
+                         Precio: $${data.Precio}<br>
+                         Cantidad: ${data.Cantidad}<br>
                          <button onclick="addToCart('${doc.id}', '${data.name}', ${data.price})">Add to Cart</button>`;
         container.appendChild(div);
       });
