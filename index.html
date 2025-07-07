@@ -74,7 +74,7 @@
       });
     }
 
-    async function checkout(method) {
+  async function checkout(method) {
   if (cart.length === 0) return alert("Cart is empty");
 
   const total = cart.reduce((sum, item) => sum + item.price, 0);
@@ -87,7 +87,7 @@
   }));
 
   try {
-    const orderRef = await db.collection("orders").add({
+    const orderRef = await db.collection("ordenes").add({
       items,
       total,
       method,
