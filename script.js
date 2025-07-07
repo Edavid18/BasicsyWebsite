@@ -23,7 +23,7 @@ const firebaseConfig = {
         div.innerHTML = `<strong>${data.Nombre} (${data.Color})</strong><br>
                          Precio: $${data.Precio}<br>
                          Cantidad: ${data.Cantidad}<br>
-                         <button onclick="addToCart('${doc.id}', '${data.name}', ${data.price})">Add to Cart</button>`;
+                         <button onclick="addToCart('${doc.id}', '${data.Nombre}', ${data.Precio})">Add to Cart</button>`;
         container.appendChild(div);
       });
     });
