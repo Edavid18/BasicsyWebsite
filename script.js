@@ -24,28 +24,45 @@ function loadProducts() {
     db.collection("products").get().then(snapshot => {
         const container = document.getElementById("products");
         container.innerHTML = "";
+
         snapshot.forEach(doc => {
             const data = doc.data();
             const div = document.createElement("div");
             div.className = "product";
 
-            const colorOptions = data.Color.map(color => `<option value="${color}">${color}</option>`).join('');
+            const disponibilidad = data.Disponibilidad || {};
+            const colores = Object.keys(disponibilidad);
+
+            const colorOptions = colores.map(color => {
+                const qty = disponibilidad[color] || 0;
+                return `<option value="${color}" ${qty === 0 ? 'disabled' : ''}>
+                    ${color} (Disponible: ${qty})
+                </option>`;
+            }).join('');
+
+            const buttonId = `add-${doc.id}`;
 
             div.innerHTML = `
-          <strong>${data.Nombre}</strong><br>
-          Precio: $${data.Precio}<br>
-          Cantidad: ${data.Cantidad}<br>
-          Color:
-          <select id="color-${doc.id}">
-            ${colorOptions}
-          </select><br>
-          <button onclick="addToCart('${doc.id}', '${data.Nombre}', ${data.Precio})">Add to Cart</button>
-        `;
+              <strong>${data.Nombre}</strong><br>
+              Precio: $${data.Precio}<br>
+              Color:
+              <select id="color-${doc.id}">
+                ${colorOptions}
+              </select><br>
+              <button id="${buttonId}" onclick="addToCart('${doc.id}', '${data.Nombre}', ${data.Precio})">Add to Cart</button>
+            `;
 
             container.appendChild(div);
+
+            const totalAvailable = Object.values(disponibilidad).reduce((sum, qty) => sum + qty, 0);
+            if (totalAvailable === 0) {
+                document.getElementById(buttonId).disabled = true;
+                document.getElementById(buttonId).innerText = "Agotado";
+            }
         });
     });
 }
+
 
 function addToCart(id, name, price) {
     const colorSelect = document.getElementById(`color-${id}`);
@@ -129,8 +146,7 @@ async function checkout(method) {
 
 // Admin Page Logic
 async function loadAdminOrders() {
-    const ordersRef = collection(db, "orders");
-    const snapshot = await getDocs(ordersRef);
+    const snapshot = await db.collection("orders").get();
     const tbody = document.querySelector("#orders-table tbody");
     tbody.innerHTML = "";
 
@@ -143,17 +159,17 @@ async function loadAdminOrders() {
         }).join("");
 
         tr.innerHTML = `
-      <td>${docSnap.id}</td>
-      <td>${data.customerInfo?.name || "-"}</td>
-      <td>${data.customerInfo?.phone || "-"}</td>
-      <td>${data.method}</td>
-      <td>${itemsHtml}</td>
-      <td>$${data.total}</td>
-      <td class="${data.confirmed ? 'confirmed' : 'not-confirmed'}">${data.confirmed ? "Yes" : "No"}</td>
-      <td>
-        <button data-id="${docSnap.id}" data-current="${data.confirmed}">Toggle</button>
-      </td>
-    `;
+            <td>${docSnap.id}</td>
+            <td>${data.customerInfo?.name || "-"}</td>
+            <td>${data.customerInfo?.phone || "-"}</td>
+            <td>${data.method}</td>
+            <td>${itemsHtml}</td>
+            <td>$${data.total}</td>
+            <td class="${data.confirmed ? 'confirmed' : 'not-confirmed'}">${data.confirmed ? "Yes" : "No"}</td>
+            <td>
+                <button data-id="${docSnap.id}" data-current="${data.confirmed}">Toggle</button>
+            </td>
+        `;
 
         tbody.appendChild(tr);
     });
@@ -166,8 +182,7 @@ function attachToggleListeners() {
         button.addEventListener("click", async () => {
             const id = button.dataset.id;
             const current = button.dataset.current === "true";
-            const orderRef = doc(db, "orders", id);
-            await updateDoc(orderRef, { confirmed: !current });
+            await db.collection("orders").doc(id).update({ confirmed: !current });
             loadAdminOrders();
         });
     });
