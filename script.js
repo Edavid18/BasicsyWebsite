@@ -264,8 +264,49 @@ function attachToggleListeners() {
         button.addEventListener("click", async () => {
             const id = button.dataset.id;
             const current = button.dataset.current === "true";
-            await db.collection("orders").doc(id).update({ confirmed: !current });
-            loadAdminOrders();
+            const newConfirmed = !current;
+
+            const orderRef = db.collection("orders").doc(id);
+            const orderSnap = await orderRef.get();
+            if (!orderSnap.exists) {
+                console.error("Order not found:", id);
+                return;
+            }
+
+            const order = orderSnap.data();
+
+            if (order.method === 'cash' && current === true && newConfirmed === false) {
+                // We are toggling OFF a confirmed cash order — we should revert the stock
+                const batch = db.batch();
+
+                for (const item of order.items) {
+                    const productRef = db.collection("products").doc(item.productId);
+                    const productSnap = await productRef.get();
+                    if (!productSnap.exists) {
+                        console.error("Product not found:", item.productId);
+                        continue;
+                    }
+
+                    const productData = productSnap.data();
+                    const disponibilidad = { ...productData.Disponibilidad };
+
+                    if (typeof disponibilidad[item.color] !== 'number') {
+                        console.error(`Missing color ${item.color} in product ${item.productId}`);
+                        continue;
+                    }
+
+                    disponibilidad[item.color] += item.quantity; // Add back to stock
+                    batch.update(productRef, { Disponibilidad: disponibilidad });
+                }
+
+                await batch.commit();
+                console.log("Stock reverted.");
+            }
+
+            // Now update the confirmed field
+            await orderRef.update({ confirmed: newConfirmed });
+
+            loadAdminOrders(); // Reload UI
         });
     });
 }
