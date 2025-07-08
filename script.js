@@ -279,23 +279,40 @@ function attachToggleListeners() {
                 // We are toggling OFF a confirmed cash order — we should revert the stock
                 const batch = db.batch();
 
+                const productChanges = {};
+
+                // Group changes by product ID
                 for (const item of order.items) {
-                    const productRef = db.collection("products").doc(item.productId);
+                    if (!productChanges[item.productId]) {
+                        productChanges[item.productId] = {};
+                    }
+                    if (!productChanges[item.productId][item.color]) {
+                        productChanges[item.productId][item.color] = 0;
+                    }
+                    productChanges[item.productId][item.color] += item.quantity;
+                }
+
+                // Now apply all stock changes per product
+                for (const [productId, colorChanges] of Object.entries(productChanges)) {
+                    const productRef = db.collection("products").doc(productId);
                     const productSnap = await productRef.get();
+
                     if (!productSnap.exists) {
-                        console.error("Product not found:", item.productId);
+                        console.error("Product not found:", productId);
                         continue;
                     }
 
                     const productData = productSnap.data();
                     const disponibilidad = { ...productData.Disponibilidad };
 
-                    if (typeof disponibilidad[item.color] !== 'number') {
-                        console.error(`Missing color ${item.color} in product ${item.productId}`);
-                        continue;
+                    for (const [color, qty] of Object.entries(colorChanges)) {
+                        if (typeof disponibilidad[color] !== "number") {
+                            console.error(`Missing color ${color} in product ${productId}`);
+                            continue;
+                        }
+                        disponibilidad[color] += qty; // Revert stock
                     }
 
-                    disponibilidad[item.color] += item.quantity; // Add back to stock
                     batch.update(productRef, { Disponibilidad: disponibilidad });
                 }
 
