@@ -63,20 +63,56 @@ function loadProducts() {
     });
 }
 
-
-function addToCart(id, name, price) {
+async function addToCart(id, name, price) {
     const colorSelect = document.getElementById(`color-${id}`);
     const selectedColor = colorSelect.value;
-    cart.push({ id, name, price, color: selectedColor });
-    renderCart();
+
+    if (!selectedColor) {
+        return alert("Please select a color.");
+    }
+
+    try {
+        const doc = await db.collection("products").doc(id).get();
+        if (!doc.exists) {
+            return alert("Product not found.");
+        }
+
+        const data = doc.data();
+        const disponibilidad = data.Disponibilidad || {};
+        const stock = disponibilidad[selectedColor];
+
+        if (typeof stock !== "number" || stock <= 0) {
+            return alert(`No stock available for ${selectedColor}`);
+        }
+
+        const existingItem = cart.find(item => item.id === id && item.color === selectedColor);
+        const currentInCart = existingItem ? existingItem.quantity : 0;
+
+        if (currentInCart >= stock) {
+            return alert(`Solo puedes agregar hasta ${stock} de ${name} (${selectedColor})`);
+        }
+
+        if (existingItem) {
+            existingItem.quantity += 1;
+        } else {
+            cart.push({ id, name, price, color: selectedColor, quantity: 1 });
+        }
+
+        renderCart();
+    } catch (error) {
+        console.error("Error checking stock:", error);
+        alert("There was a problem adding the item to the cart.");
+    }
 }
+
+
 
 function renderCart() {
     const ul = document.getElementById("cart");
     ul.innerHTML = "";
     cart.forEach(item => {
         const li = document.createElement("li");
-        li.textContent = `${item.name} - $${item.price} - Color: ${item.color}`;
+        li.textContent = `${item.name} - $${item.price} - Color: ${item.color} x${item.quantity}`;
         ul.appendChild(li);
     });
 }
@@ -89,7 +125,7 @@ async function checkout(method) {
     const items = cart.map(item => ({
         productId: item.id,
         name: item.name,
-        quantity: 1,
+        quantity: item.quantity,
         color: item.color
     }));
 
@@ -110,24 +146,65 @@ async function checkout(method) {
         console.log("Order placed:", orderRef.id);
 
         if (method === 'cash') {
+
             const batch = db.batch();
+
+            // Group cart items by productId
+            const grouped = {};
+
             for (const item of items) {
-                const ref = db.collection("products").doc(item.productId);
+                if (!grouped[item.productId]) {
+                    grouped[item.productId] = {};
+                }
+
+                if (!grouped[item.productId][item.color]) {
+                    grouped[item.productId][item.color] = 0;
+                }
+
+                grouped[item.productId][item.color] += item.quantity;
+            }
+
+            for (const productId in grouped) {
+                const ref = db.collection("products").doc(productId);
                 const snap = await ref.get();
                 if (!snap.exists) {
-                    console.error(`Product not found: ${item.productId}`);
+                    console.error(`Product not found: ${productId}`);
                     continue;
                 }
 
                 const data = snap.data();
-                if (typeof data.Cantidad !== 'number') {
-                    console.error(`Invalid stock for product: ${item.productId}`);
+                if (!data.Disponibilidad) {
+                    console.error(`No Disponibilidad in product ${productId}`);
                     continue;
                 }
 
-                const newStock = data.Cantidad - item.quantity;
-                batch.update(ref, { Cantidad: newStock });
+                const disponibilidad = { ...data.Disponibilidad };
+                const colorUpdates = grouped[productId];
+
+                let valid = true;
+
+                for (const color in colorUpdates) {
+                    if (typeof disponibilidad[color] !== 'number') {
+                        console.error(`Missing stock for ${color} in ${productId}`);
+                        valid = false;
+                        break;
+                    }
+
+                    const newStock = disponibilidad[color] - colorUpdates[color];
+                    if (newStock < 0) {
+                        console.warn(`Not enough stock for ${productId} - ${color}`);
+                        valid = false;
+                        break;
+                    }
+
+                    disponibilidad[color] = newStock;
+                }
+
+                if (!valid) continue;
+
+                batch.update(ref, { Disponibilidad: disponibilidad });
             }
+
             await batch.commit();
             console.log("Stock updated.");
         }
@@ -155,7 +232,12 @@ async function loadAdminOrders() {
         const tr = document.createElement("tr");
 
         const itemsHtml = data.items.map(item => {
-            return `<div><strong>${item.productId}</strong> (x${item.quantity})</div>`;
+            return `
+                <div>
+                    <strong>${item.name}</strong> 
+                    - Color: ${item.color || "-"} 
+                    - x${item.quantity}
+                </div>`;
         }).join("");
 
         tr.innerHTML = `
